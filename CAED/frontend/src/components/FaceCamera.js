@@ -2,8 +2,8 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, Animated, TouchableOpacity, Dimensions
 } from 'react-native';
-import { Camera } from 'expo-camera';
-import * as FaceDetector from 'expo-camera';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as FaceDetector from 'expo-face-detector';
 import {
   checkChallenge, detectNaturalBlink, extractFaceFingerprint,
   compareFaces, isFaceValid, getRandomChallenges, CHALLENGES
@@ -14,11 +14,6 @@ const { width: SCREEN_W } = Dimensions.get('window');
 const OVAL_W = SCREEN_W * 0.68;
 const OVAL_H = OVAL_W * 1.28;
 
-// ── Modo de uso de la cámara ──────────────────────────────────
-// mode="register"  → Liveness completo (desafíos múltiples) + captura fingerprint
-// mode="session"   → Solo parpadeo natural + comparación con fingerprint guardado
-// ─────────────────────────────────────────────────────────────
-
 export default function FaceCamera({
   mode = 'session',
   storedFingerprint = null,
@@ -26,10 +21,10 @@ export default function FaceCamera({
   onError,
 }) {
   const cameraRef = useRef(null);
-  const [hasPermission, setHasPermission] = useState(null);
+  const [permission, requestPermission] = useCameraPermissions();
   const [faceDetected, setFaceDetected] = useState(false);
   const [currentFace, setCurrentFace] = useState(null);
-  const [phase, setPhase] = useState('center'); // center | challenges | capture | comparing
+  const [phase, setPhase] = useState('center');
   const [challenges, setChallenges] = useState([]);
   const [currentChallengeIdx, setCurrentChallengeIdx] = useState(0);
   const [completedChallenges, setCompletedChallenges] = useState([]);
@@ -37,17 +32,16 @@ export default function FaceCamera({
   const [blinkDetected, setBlinkDetected] = useState(false);
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState('Centra tu rostro en el óvalo');
-  const [messageType, setMessageType] = useState('info'); // info | success | error
+  const [messageType, setMessageType] = useState('info');
   const ovalAnim = useRef(new Animated.Value(0)).current;
   const prevFaceRef = useRef(null);
   const challengeTimerRef = useRef(null);
   const captureTimeoutRef = useRef(null);
 
   useEffect(() => {
-    (async () => {
-      const { status } = await Camera.requestCameraPermissionsAsync();
-      setHasPermission(status === 'granted');
-    })();
+    if (!permission?.granted) {
+      requestPermission();
+    }
     if (mode === 'register') {
       setChallenges(getRandomChallenges(2));
     }
@@ -57,7 +51,6 @@ export default function FaceCamera({
     };
   }, []);
 
-  // Animar el óvalo según estado
   useEffect(() => {
     Animated.spring(ovalAnim, {
       toValue: faceDetected ? 1 : 0,
@@ -83,7 +76,6 @@ export default function FaceCamera({
       return;
     }
 
-    // ── FASE: Centrar rostro ──
     if (phase === 'center') {
       if (isFaceValid(face)) {
         setMessage('✅ Rostro detectado');
@@ -103,7 +95,6 @@ export default function FaceCamera({
       }
     }
 
-    // ── FASE: Desafíos (registro) ──
     if (phase === 'challenges' && challenges.length > 0) {
       const challenge = challenges[currentChallengeIdx];
       if (challenge && checkChallenge(challenge.key, face, prevFaceRef.current)) {
@@ -111,7 +102,6 @@ export default function FaceCamera({
       }
     }
 
-    // ── FASE: Parpadeo natural (sesión) ──
     if (phase === 'blink') {
       const { blinked, eyeState: newEyeState } = detectNaturalBlink(face, eyeState);
       setEyeState(newEyeState);
@@ -197,13 +187,13 @@ export default function FaceCamera({
     }
   };
 
-  if (hasPermission === null) return (
+  if (!permission) return (
     <View style={styles.container}>
       <Text style={styles.permText}>Solicitando permiso de cámara...</Text>
     </View>
   );
 
-  if (hasPermission === false) return (
+  if (!permission.granted) return (
     <View style={styles.container}>
       <Text style={styles.permText}>Se necesita acceso a la cámara</Text>
     </View>
@@ -213,10 +203,10 @@ export default function FaceCamera({
 
   return (
     <View style={styles.container}>
-      <Camera
+      <CameraView
         ref={cameraRef}
         style={StyleSheet.absoluteFill}
-        type={Camera.Constants.Type.front}
+        facing="front"
         onFacesDetected={handleFacesDetected}
         faceDetectorSettings={{
           mode: FaceDetector.FaceDetectorMode.fast,
@@ -227,15 +217,12 @@ export default function FaceCamera({
         }}
       />
 
-      {/* Overlay oscuro */}
       <View style={styles.overlay} pointerEvents="none" />
 
-      {/* Óvalo del rostro */}
       <View style={styles.ovalWrapper} pointerEvents="none">
         <Animated.View style={[styles.oval, { borderColor: ovalBorderColor }]} />
       </View>
 
-      {/* Progreso de desafíos (modo registro) */}
       {mode === 'register' && phase === 'challenges' && (
         <View style={styles.progressContainer} pointerEvents="none">
           <View style={styles.progressBar}>
@@ -255,7 +242,6 @@ export default function FaceCamera({
         </View>
       )}
 
-      {/* Mensaje de estado */}
       <View style={[
         styles.messageBox,
         messageType === 'success' && styles.messageSuccess,
@@ -264,7 +250,6 @@ export default function FaceCamera({
         <Text style={styles.messageText}>{message}</Text>
       </View>
 
-      {/* Instrucción del desafío actual */}
       {mode === 'register' && phase === 'challenges' && currentChallenge && (
         <View style={styles.challengeBox} pointerEvents="none">
           <Text style={styles.challengeTitle}>Desafío {currentChallengeIdx + 1}/{challenges.length}</Text>
@@ -278,12 +263,10 @@ export default function FaceCamera({
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
   permText: { color: COLORS.white, ...FONTS.body, textAlign: 'center', padding: 20 },
-
   overlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.55)',
   },
-
   ovalWrapper: {
     position: 'absolute',
     top: '50%',
@@ -299,7 +282,6 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     backgroundColor: 'transparent',
   },
-
   progressContainer: {
     position: 'absolute', top: 80, left: 20, right: 20, zIndex: 20,
   },
@@ -324,7 +306,6 @@ const styles = StyleSheet.create({
     borderWidth: 2, borderColor: COLORS.white,
   },
   challengeIconText: { fontSize: 20 },
-
   messageBox: {
     position: 'absolute', bottom: 160, left: 20, right: 20,
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -334,7 +315,6 @@ const styles = StyleSheet.create({
   messageSuccess: { backgroundColor: 'rgba(45,198,83,0.85)' },
   messageError: { backgroundColor: 'rgba(230,57,70,0.85)' },
   messageText: { ...FONTS.h4, color: COLORS.white, textAlign: 'center' },
-
   challengeBox: {
     position: 'absolute', bottom: 80, left: 20, right: 20,
     backgroundColor: 'rgba(10,36,99,0.85)',
