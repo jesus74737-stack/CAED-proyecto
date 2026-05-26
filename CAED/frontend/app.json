@@ -23,6 +23,7 @@
     },
     "plugins": [
       "expo-camera",
+      "expo-face-detector",
       "expo-location",
       "expo-notifications"
     ],
