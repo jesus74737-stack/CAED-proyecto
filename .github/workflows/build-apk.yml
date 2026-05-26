@@ -30,9 +30,23 @@ jobs:
             -dname "CN=CAED, OU=Dev, O=CAED, L=City, ST=State, C=CO" \
             -storepass caed1234 -keypass caed1234
 
+      - name: Setup credentials
+        working-directory: CAED/frontend
+        run: |
+          echo '{
+            "android": {
+              "keystore": {
+                "keystorePath": "keystore.jks",
+                "keystorePassword": "caed1234",
+                "keyAlias": "caed",
+                "keyPassword": "caed1234"
+              }
+            }
+          }' > credentials.json
+
       - name: Build APK
         working-directory: CAED/frontend
-        run: eas build --platform android --profile preview --non-interactive
+        run: eas build --platform android --profile preview --non-interactive --local
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
@@ -40,4 +54,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: CAED-APK
-          path: CAED/frontend/build-*.apk
+          path: CAED/frontend/*.apk
