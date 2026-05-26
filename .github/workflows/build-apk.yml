@@ -15,11 +15,8 @@ jobs:
         with:
           node-version: 18
 
-      - name: Setup EAS
-        uses: expo/expo-github-action@v8
-        with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Install EAS CLI
+        run: npm install -g eas-cli
 
       - name: Install dependencies
         working-directory: CAED/frontend
@@ -28,6 +25,8 @@ jobs:
       - name: Build APK
         working-directory: CAED/frontend
         run: eas build --platform android --profile preview --non-interactive
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
