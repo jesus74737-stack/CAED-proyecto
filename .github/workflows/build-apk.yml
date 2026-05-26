@@ -22,9 +22,17 @@ jobs:
         working-directory: CAED/frontend
         run: npm install
 
+      - name: Generate Keystore
+        working-directory: CAED/frontend
+        run: |
+          keytool -genkey -v -keystore keystore.jks \
+            -alias caed -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=CAED, OU=Dev, O=CAED, L=City, ST=State, C=CO" \
+            -storepass caed1234 -keypass caed1234
+
       - name: Build APK
         working-directory: CAED/frontend
-        run: eas build --platform android --profile preview --non-interactive
+        run: eas build --platform android --profile preview --non-interactive --local
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
@@ -32,4 +40,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: CAED-APK
-          path: CAED/frontend/*.apk
+          path: CAED/frontend/build-*.apk
