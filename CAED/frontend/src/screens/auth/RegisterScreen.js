@@ -3,6 +3,7 @@ import {
   View, Text, TextInput, StyleSheet, ScrollView,
   TouchableOpacity, Modal, Alert, ActivityIndicator, StatusBar,
 } from 'react-native';
+import { useCameraPermissions } from 'expo-camera';
 import FaceCamera from '../../components/FaceCamera';
 import { COLORS, FONTS, RADIUS, SHADOWS } from '../../utils/theme';
 import api from '../../services/api';
@@ -21,6 +22,7 @@ export default function RegisterScreen({ navigation }) {
   const [faceData, setFaceData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
   const update = (key, val) => {
     setForm(p => ({ ...p, [key]: val }));
@@ -43,6 +45,17 @@ export default function RegisterScreen({ navigation }) {
       if (!validateStep0()) return;
       setStep(1);
     }
+  };
+
+  const handleOpenCamera = async () => {
+    if (!cameraPermission?.granted) {
+      const result = await requestCameraPermission();
+      if (!result.granted) {
+        Alert.alert('Permiso requerido', 'Necesitamos acceso a la cámara para verificar tu identidad.');
+        return;
+      }
+    }
+    setShowCamera(true);
   };
 
   const handleFaceSuccess = (data) => {
@@ -97,7 +110,6 @@ export default function RegisterScreen({ navigation }) {
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
 
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => step > 0 ? setStep(step - 1) : navigation.goBack()} style={styles.backArrow}>
           <Text style={styles.backArrowText}>←</Text>
@@ -106,7 +118,6 @@ export default function RegisterScreen({ navigation }) {
         <View style={{ width: 36 }} />
       </View>
 
-      {/* Steps */}
       <View style={styles.stepsRow}>
         {STEPS.map((s, i) => (
           <React.Fragment key={s}>
@@ -127,12 +138,11 @@ export default function RegisterScreen({ navigation }) {
 
       <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled">
 
-        {/* ── PASO 0: Datos ── */}
+        {/* PASO 0: Datos */}
         {step === 0 && (
           <>
             <Text style={styles.stepTitle}>Información personal</Text>
 
-            {/* Rol */}
             <Text style={styles.fieldLabel}>SOY</Text>
             <View style={styles.roleRow}>
               {[
@@ -202,21 +212,21 @@ export default function RegisterScreen({ navigation }) {
           </>
         )}
 
-        {/* ── PASO 1: Verificación facial ── */}
+        {/* PASO 1: Verificación facial */}
         {step === 1 && (
           <>
             <Text style={styles.stepTitle}>Verificación facial</Text>
             <Text style={styles.stepSubtitle}>
-              Para registrarte, el sistema verificará que eres una persona real mediante desafíos en tiempo real.
+              Para registrarte, el sistema tomará una foto para que el administrador pueda identificarte.
             </Text>
 
             <View style={styles.infoCard}>
               <Text style={styles.infoTitle}>¿Qué va a pasar?</Text>
               {[
-                { icon: '👁️', text: 'Te pedirá que parpadees' },
-                { icon: '😊', text: 'Te pedirá que sonrías o gires la cabeza' },
-                { icon: '🔐', text: 'Capturará tu mapa facial para futuras verificaciones' },
-                { icon: '✅', text: 'Nadie puede suplantarte con una foto' },
+                { icon: '📸', text: 'Se abrirá la cámara frontal' },
+                { icon: '👤', text: 'Centra tu rostro en el óvalo' },
+                { icon: '✅', text: 'Se tomará la foto automáticamente' },
+                { icon: '🔐', text: 'El admin revisará tu solicitud' },
               ].map(item => (
                 <View key={item.text} style={styles.infoRow}>
                   <Text style={styles.infoRowIcon}>{item.icon}</Text>
@@ -225,7 +235,7 @@ export default function RegisterScreen({ navigation }) {
               ))}
             </View>
 
-            <TouchableOpacity style={styles.nextBtn} onPress={() => setShowCamera(true)}>
+            <TouchableOpacity style={styles.nextBtn} onPress={handleOpenCamera}>
               <Text style={styles.nextBtnText}>📸 Iniciar verificación facial</Text>
             </TouchableOpacity>
 
@@ -237,7 +247,7 @@ export default function RegisterScreen({ navigation }) {
           </>
         )}
 
-        {/* ── PASO 2: Confirmar ── */}
+        {/* PASO 2: Confirmar */}
         {step === 2 && (
           <>
             <Text style={styles.stepTitle}>Confirmar solicitud</Text>
@@ -279,7 +289,6 @@ export default function RegisterScreen({ navigation }) {
 
       </ScrollView>
 
-      {/* Modal cámara */}
       <Modal visible={showCamera} animationType="slide" statusBarTranslucent>
         <View style={{ flex: 1 }}>
           <FaceCamera
@@ -309,7 +318,6 @@ const styles = StyleSheet.create({
   },
   backArrowText: { fontSize: 20, color: COLORS.white },
   headerTitle: { ...FONTS.h3, color: COLORS.white },
-
   stepsRow: {
     backgroundColor: COLORS.primary, paddingBottom: 24,
     paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center',
@@ -327,12 +335,10 @@ const styles = StyleSheet.create({
   stepLabelActive: { color: COLORS.white },
   stepLine: { flex: 1, height: 2, backgroundColor: 'rgba(255,255,255,0.2)', marginBottom: 20 },
   stepLineDone: { backgroundColor: COLORS.success },
-
   body: { flex: 1 },
   bodyContent: { padding: 24, paddingBottom: 40 },
   stepTitle: { ...FONTS.h2, color: COLORS.dark, marginBottom: 6 },
   stepSubtitle: { ...FONTS.small, color: COLORS.gray, marginBottom: 24, lineHeight: 20 },
-
   roleRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
   roleBtn: {
     flex: 1, paddingVertical: 14, borderRadius: RADIUS.md,
@@ -342,7 +348,6 @@ const styles = StyleSheet.create({
   roleBtnActive: { borderColor: COLORS.primary, backgroundColor: '#EEF2FF' },
   roleBtnText: { ...FONTS.body, color: COLORS.gray },
   roleBtnTextActive: { color: COLORS.primary, fontWeight: '700' },
-
   fieldGroup: { marginBottom: 18 },
   fieldLabel: { ...FONTS.label, color: COLORS.gray, marginBottom: 8 },
   fieldBox: {
@@ -355,13 +360,11 @@ const styles = StyleSheet.create({
   fieldIcon: { fontSize: 18, marginRight: 10 },
   fieldInput: { flex: 1, paddingVertical: 14, ...FONTS.body, color: COLORS.dark },
   fieldError: { ...FONTS.small, color: COLORS.danger, marginTop: 4 },
-
   nextBtn: {
     backgroundColor: COLORS.primary, borderRadius: RADIUS.md,
     paddingVertical: 17, alignItems: 'center', marginTop: 12, ...SHADOWS.medium,
   },
   nextBtnText: { ...FONTS.h4, color: COLORS.white },
-
   infoCard: {
     backgroundColor: COLORS.white, borderRadius: RADIUS.lg,
     padding: 20, marginBottom: 24, ...SHADOWS.small,
@@ -371,14 +374,12 @@ const styles = StyleSheet.create({
   infoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 12 },
   infoRowIcon: { fontSize: 20 },
   infoRowText: { ...FONTS.body, color: COLORS.dark, flex: 1 },
-
   successBanner: {
     backgroundColor: COLORS.successLight, borderRadius: RADIUS.md,
     padding: 14, marginTop: 16, alignItems: 'center',
     borderWidth: 1, borderColor: COLORS.success,
   },
   successBannerText: { ...FONTS.body, color: COLORS.success, fontWeight: '700' },
-
   summaryCard: {
     backgroundColor: COLORS.white, borderRadius: RADIUS.lg,
     padding: 20, marginBottom: 16, ...SHADOWS.small,
@@ -395,21 +396,17 @@ const styles = StyleSheet.create({
   },
   summaryLabel: { ...FONTS.small, color: COLORS.gray },
   summaryValue: { ...FONTS.small, color: COLORS.dark, fontWeight: '600', maxWidth: '60%', textAlign: 'right' },
-
   warningBox: {
     backgroundColor: COLORS.warningLight, borderRadius: RADIUS.md,
     padding: 14, marginBottom: 16, borderLeftWidth: 3, borderLeftColor: COLORS.warning,
   },
   warningText: { ...FONTS.small, color: '#7D5A2A', lineHeight: 20 },
-
   cancelCamBtn: {
     position: 'absolute', bottom: 40, left: 20, right: 20,
     backgroundColor: 'rgba(0,0,0,0.7)', borderRadius: RADIUS.md,
     padding: 16, alignItems: 'center',
   },
   cancelCamText: { ...FONTS.h4, color: COLORS.white },
-
-  // Pantalla de éxito
   successScreen: {
     flex: 1, backgroundColor: COLORS.primary,
     justifyContent: 'center', alignItems: 'center', padding: 40,
