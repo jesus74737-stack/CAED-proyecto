@@ -4,10 +4,15 @@
     "slug": "caed-app",
     "version": "1.0.0",
     "orientation": "portrait",
+    "splash": {
+      "backgroundColor": "#ffffff",
+      "resizeMode": "contain"
+    },
     "android": {
       "package": "com.caed.asistencia",
-      "compileSdkVersion": 34,
-      "targetSdkVersion": 34,
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff"
+      },
       "permissions": [
         "CAMERA",
         "ACCESS_FINE_LOCATION",
