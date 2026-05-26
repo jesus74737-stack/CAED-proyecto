@@ -32,7 +32,7 @@ jobs:
 
       - name: Build APK
         working-directory: CAED/frontend
-        run: eas build --platform android --profile preview --non-interactive --local
+        run: eas build --platform android --profile preview --non-interactive
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
