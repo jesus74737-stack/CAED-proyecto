@@ -3,7 +3,6 @@ import {
   View, Text, TextInput, StyleSheet, ScrollView,
   TouchableOpacity, Modal, Alert, ActivityIndicator, StatusBar,
 } from 'react-native';
-import { useCameraPermissions } from 'expo-camera';
 import FaceCamera from '../../components/FaceCamera';
 import { COLORS, FONTS, RADIUS, SHADOWS } from '../../utils/theme';
 import api from '../../services/api';
@@ -22,7 +21,6 @@ export default function RegisterScreen({ navigation }) {
   const [faceData, setFaceData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
   const update = (key, val) => {
     setForm(p => ({ ...p, [key]: val }));
@@ -45,17 +43,6 @@ export default function RegisterScreen({ navigation }) {
       if (!validateStep0()) return;
       setStep(1);
     }
-  };
-
-  const handleOpenCamera = async () => {
-    if (!cameraPermission?.granted) {
-      const result = await requestCameraPermission();
-      if (!result.granted) {
-        Alert.alert('Permiso requerido', 'Necesitamos acceso a la cámara para verificar tu identidad.');
-        return;
-      }
-    }
-    setShowCamera(true);
   };
 
   const handleFaceSuccess = (data) => {
@@ -138,7 +125,6 @@ export default function RegisterScreen({ navigation }) {
 
       <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled">
 
-        {/* PASO 0: Datos */}
         {step === 0 && (
           <>
             <Text style={styles.stepTitle}>Información personal</Text>
@@ -212,7 +198,6 @@ export default function RegisterScreen({ navigation }) {
           </>
         )}
 
-        {/* PASO 1: Verificación facial */}
         {step === 1 && (
           <>
             <Text style={styles.stepTitle}>Verificación facial</Text>
@@ -235,7 +220,7 @@ export default function RegisterScreen({ navigation }) {
               ))}
             </View>
 
-            <TouchableOpacity style={styles.nextBtn} onPress={handleOpenCamera}>
+            <TouchableOpacity style={styles.nextBtn} onPress={() => setShowCamera(true)}>
               <Text style={styles.nextBtnText}>📸 Iniciar verificación facial</Text>
             </TouchableOpacity>
 
@@ -247,7 +232,6 @@ export default function RegisterScreen({ navigation }) {
           </>
         )}
 
-        {/* PASO 2: Confirmar */}
         {step === 2 && (
           <>
             <Text style={styles.stepTitle}>Confirmar solicitud</Text>
