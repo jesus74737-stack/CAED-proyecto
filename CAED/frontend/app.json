@@ -4,18 +4,7 @@
     "slug": "caed-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./src/assets/icon.png",
-    "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./src/assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#1E3A5F"
-    },
     "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./src/assets/adaptive-icon.png",
-        "backgroundColor": "#1E3A5F"
-      },
       "package": "com.caed.asistencia",
       "permissions": [
         "CAMERA",
