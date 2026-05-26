@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, Animated, TouchableOpacity, Dimensions
 } from 'react-native';
 import { Camera } from 'expo-camera';
-import * as FaceDetector from 'expo-face-detector';
+import * as FaceDetector from 'expo-camera';
 import {
   checkChallenge, detectNaturalBlink, extractFaceFingerprint,
   compareFaces, isFaceValid, getRandomChallenges, CHALLENGES
