@@ -70,9 +70,13 @@ router.post('/login', async (req, res) => {
 router.post('/register', async (req, res) => {
   const { nombre, cedula, email, telefono, password, rol,
           foto_facial_registrada, foto, carrera_id } = req.body;
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
     const hash = await bcrypt.hash(password, 10);
-    const result = await pool.query(
+
+    // CORRECCIÓN: foto puede ser base64 largo, la columna debe ser TEXT en la BD
+    const result = await client.query(
       `INSERT INTO usuario (nombre, cedula, email, telefono, password, rol, foto, estado)
        VALUES ($1,$2,$3,$4,$5,$6,$7,'pendiente') RETURNING id`,
       [nombre, cedula, email, telefono || null, hash, rol, foto || null]
@@ -80,23 +84,27 @@ router.post('/register', async (req, res) => {
     const userId = result.rows[0].id;
 
     if (rol === 'profesor') {
-      await pool.query(
+      await client.query(
         `INSERT INTO profesor (usuario_id, foto_facial_registrada) VALUES ($1,$2)`,
         [userId, foto_facial_registrada || null]
       );
     } else if (rol === 'estudiante') {
-      await pool.query(
+      await client.query(
         `INSERT INTO estudiante (usuario_id, matricula, carrera_id) VALUES ($1,$2,$3)`,
         [userId, cedula, carrera_id || null]
       );
     }
 
+    await client.query('COMMIT');
     res.json({ message: 'Solicitud enviada, pendiente de aprobación por el administrador' });
   } catch (error) {
-    console.error(error);
+    await client.query('ROLLBACK');
+    console.error('❌ Error en /register:', error.message, '| code:', error.code);
     if (error.code === '23505')
       return res.status(400).json({ message: 'La cédula o email ya está registrado' });
-    res.status(500).json({ message: 'Error del servidor' });
+    res.status(500).json({ message: `Error del servidor: ${error.message}` });
+  } finally {
+    client.release();
   }
 });
 
