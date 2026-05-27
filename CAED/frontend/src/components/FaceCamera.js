@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, Animated, TouchableOpacity, Dimensions, Platform
+  View, Text, StyleSheet, Animated, Dimensions, Platform
 } from 'react-native';
-import { CameraView, useCameraPermissions } from 'expo-camera';
-import { COLORS, FONTS, RADIUS } from '../utils/theme';
+import { CameraView, Camera } from 'expo-camera';
+import { TouchableOpacity } from 'react-native';
+import { COLORS, RADIUS } from '../utils/theme';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const OVAL_W = SCREEN_W * 0.68;
@@ -24,29 +25,48 @@ const STEPS_SESSION = [
 
 export default function FaceCamera({ mode = 'session', onSuccess, onError }) {
   const cameraRef = useRef(null);
-  const [permission, requestPermission] = useCameraPermissions();
-  const [stepIdx, setStepIdx] = useState(0);
-  const [capturing, setCapturing] = useState(false);
-  const [cameraReady, setCameraReady] = useState(false);
-  // ✅ NUEVO FIX: no montar CameraView hasta que el Modal termine de abrir
-  const [mountCamera, setMountCamera] = useState(false);
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const timerRef = useRef(null);
   const isMounted = useRef(true);
   const hasCapture = useRef(false);
+  const timerRef = useRef(null);
 
+  // ✅ FIX PRINCIPAL: reemplazar useCameraPermissions (causa del crash) 
+  // por estado manual + Camera.requestCameraPermissionsAsync()
+  const [permGranted, setPermGranted] = useState(null); // null=cargando, true/false
+  const [cameraReady, setCameraReady] = useState(false);
+  const [mountCamera, setMountCamera] = useState(false);
+  const [stepIdx, setStepIdx] = useState(0);
+
+  const pulseAnim = useRef(new Animated.Value(1)).current;
   const steps = mode === 'register' ? STEPS_REGISTER : STEPS_SESSION;
 
   useEffect(() => {
     isMounted.current = true;
-    startPulse();
-    // ✅ Esperar 600ms antes de montar CameraView (deja que el Modal termine)
-    const mountTimer = setTimeout(() => {
+
+    // Pedir permiso con la API imperativa (estable en expo-camera 14.x)
+    Camera.requestCameraPermissionsAsync()
+      .then(({ status }) => {
+        if (isMounted.current) setPermGranted(status === 'granted');
+      })
+      .catch(() => {
+        if (isMounted.current) setPermGranted(false);
+      });
+
+    // Animación de pulso
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.04, duration: 800, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1,    duration: 800, useNativeDriver: true }),
+      ])
+    ).start();
+
+    // Delay antes de montar CameraView (evita crash durante animación del Modal)
+    const t = setTimeout(() => {
       if (isMounted.current) setMountCamera(true);
     }, 600);
+
     return () => {
       isMounted.current = false;
-      clearTimeout(mountTimer);
+      clearTimeout(t);
       if (timerRef.current) clearTimeout(timerRef.current);
       pulseAnim.stopAnimation();
     };
@@ -61,9 +81,8 @@ export default function FaceCamera({ mode = 'session', onSuccess, onError }) {
       return;
     }
     hasCapture.current = true;
-    if (isMounted.current) setCapturing(true);
     try {
-      if (!cameraRef.current) throw new Error('Cámara no disponible');
+      if (!cameraRef.current) throw new Error('Sin cámara');
       const photo = await cameraRef.current.takePictureAsync({
         base64: true,
         quality: 0.6,
@@ -71,53 +90,42 @@ export default function FaceCamera({ mode = 'session', onSuccess, onError }) {
       });
       if (!isMounted.current) return;
       if (mode === 'register') {
-        const fingerprint = JSON.stringify({ timestamp: Date.now(), mode: 'register' });
-        onSuccess?.({ photo: photo.base64, fingerprint });
+        onSuccess?.({ photo: photo.base64, fingerprint: JSON.stringify({ ts: Date.now() }) });
       } else {
         onSuccess?.({ photo: photo.base64, confidence: 85 });
       }
     } catch (e) {
       if (!isMounted.current) return;
       hasCapture.current = false;
-      onError?.('Error al capturar la foto. Intenta de nuevo.');
-    } finally {
-      if (isMounted.current) setCapturing(false);
+      onError?.('Error al capturar. Intenta de nuevo.');
     }
   }, [cameraReady, mode, onSuccess, onError]);
 
   useEffect(() => {
-    // ✅ No arrancar los pasos hasta que la cámara esté montada
     if (!mountCamera) return;
-    const currentKey = steps[stepIdx]?.key;
-    if (currentKey === 'capture') {
-      handleCapture();
-      return;
-    }
+    const key = steps[stepIdx]?.key;
+    if (key === 'capture') { handleCapture(); return; }
     timerRef.current = setTimeout(() => {
-      if (isMounted.current) setStepIdx(prev => Math.min(prev + 1, steps.length - 1));
+      if (isMounted.current) setStepIdx(p => Math.min(p + 1, steps.length - 1));
     }, 3000);
     return () => clearTimeout(timerRef.current);
-  }, [stepIdx, handleCapture, mountCamera]);
+  }, [stepIdx, mountCamera, handleCapture]);
 
-  const startPulse = () => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.04, duration: 800, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1,    duration: 800, useNativeDriver: true }),
-      ])
-    ).start();
-  };
-
-  if (!permission) return (
+  // Estados de carga / permiso denegado
+  if (permGranted === null) return (
     <View style={styles.container}>
       <Text style={styles.permText}>Solicitando permiso de cámara...</Text>
     </View>
   );
 
-  if (!permission.granted) return (
+  if (!permGranted) return (
     <View style={styles.container}>
       <Text style={styles.permText}>Se necesita acceso a la cámara</Text>
-      <TouchableOpacity style={styles.permBtn} onPress={requestPermission}>
+      <TouchableOpacity style={styles.permBtn} onPress={() =>
+        Camera.requestCameraPermissionsAsync().then(({ status }) => {
+          if (isMounted.current) setPermGranted(status === 'granted');
+        })
+      }>
         <Text style={styles.permBtnText}>Dar permiso</Text>
       </TouchableOpacity>
     </View>
@@ -128,7 +136,6 @@ export default function FaceCamera({ mode = 'session', onSuccess, onError }) {
 
   return (
     <View style={styles.container}>
-      {/* ✅ Solo montar CameraView después del delay */}
       {mountCamera && (
         <CameraView
           ref={cameraRef}
@@ -137,7 +144,6 @@ export default function FaceCamera({ mode = 'session', onSuccess, onError }) {
           onCameraReady={() => setCameraReady(true)}
         />
       )}
-
       <View style={styles.overlay} pointerEvents="none" />
       <View style={styles.ovalWrapper} pointerEvents="none">
         <Animated.View style={[styles.oval, { transform: [{ scale: pulseAnim }] }]} />
