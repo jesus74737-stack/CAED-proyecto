@@ -1,9 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, Animated, Dimensions, Platform
+  View, Text, StyleSheet, Animated, Dimensions, Platform, TouchableOpacity
 } from 'react-native';
-import { CameraView, Camera } from 'expo-camera';
-import { TouchableOpacity } from 'react-native';
+import { Camera } from 'expo-camera';
 import { COLORS, RADIUS } from '../utils/theme';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -29,9 +28,7 @@ export default function FaceCamera({ mode = 'session', onSuccess, onError }) {
   const hasCapture = useRef(false);
   const timerRef = useRef(null);
 
-  // ✅ FIX PRINCIPAL: reemplazar useCameraPermissions (causa del crash) 
-  // por estado manual + Camera.requestCameraPermissionsAsync()
-  const [permGranted, setPermGranted] = useState(null); // null=cargando, true/false
+  const [permGranted, setPermGranted] = useState(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [mountCamera, setMountCamera] = useState(false);
   const [stepIdx, setStepIdx] = useState(0);
@@ -42,7 +39,6 @@ export default function FaceCamera({ mode = 'session', onSuccess, onError }) {
   useEffect(() => {
     isMounted.current = true;
 
-    // Pedir permiso con la API imperativa (estable en expo-camera 14.x)
     Camera.requestCameraPermissionsAsync()
       .then(({ status }) => {
         if (isMounted.current) setPermGranted(status === 'granted');
@@ -51,7 +47,6 @@ export default function FaceCamera({ mode = 'session', onSuccess, onError }) {
         if (isMounted.current) setPermGranted(false);
       });
 
-    // Animación de pulso
     Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 1.04, duration: 800, useNativeDriver: true }),
@@ -59,7 +54,6 @@ export default function FaceCamera({ mode = 'session', onSuccess, onError }) {
       ])
     ).start();
 
-    // Delay antes de montar CameraView (evita crash durante animación del Modal)
     const t = setTimeout(() => {
       if (isMounted.current) setMountCamera(true);
     }, 600);
@@ -111,7 +105,6 @@ export default function FaceCamera({ mode = 'session', onSuccess, onError }) {
     return () => clearTimeout(timerRef.current);
   }, [stepIdx, mountCamera, handleCapture]);
 
-  // Estados de carga / permiso denegado
   if (permGranted === null) return (
     <View style={styles.container}>
       <Text style={styles.permText}>Solicitando permiso de cámara...</Text>
@@ -137,10 +130,10 @@ export default function FaceCamera({ mode = 'session', onSuccess, onError }) {
   return (
     <View style={styles.container}>
       {mountCamera && (
-        <CameraView
+        <Camera
           ref={cameraRef}
           style={StyleSheet.absoluteFill}
-          facing="front"
+          type="front"
           onCameraReady={() => setCameraReady(true)}
         />
       )}
