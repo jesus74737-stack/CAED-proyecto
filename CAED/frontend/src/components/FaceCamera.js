@@ -9,7 +9,6 @@ const { width: SCREEN_W } = Dimensions.get('window');
 const OVAL_W = SCREEN_W * 0.68;
 const OVAL_H = OVAL_W * 1.28;
 
-// ✅ FIX: Definir fuera del componente para evitar recreación en cada render
 const STEPS_REGISTER = [
   { key: 'center',  instruction: '📸 Centra tu rostro en el óvalo' },
   { key: 'blink',   instruction: '👁️ Parpadea naturalmente' },
@@ -23,23 +22,17 @@ const STEPS_SESSION = [
   { key: 'capture', instruction: '✅ Verificando...' },
 ];
 
-export default function FaceCamera({
-  mode = 'session',
-  storedFingerprint = null,
-  onSuccess,
-  onError,
-}) {
+export default function FaceCamera({ mode = 'session', onSuccess, onError }) {
   const cameraRef = useRef(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [stepIdx, setStepIdx] = useState(0);
   const [capturing, setCapturing] = useState(false);
-  // ✅ FIX: Rastrear si la cámara está lista antes de takePicture
   const [cameraReady, setCameraReady] = useState(false);
+  // ✅ NUEVO FIX: no montar CameraView hasta que el Modal termine de abrir
+  const [mountCamera, setMountCamera] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const timerRef = useRef(null);
-  // ✅ FIX: Evitar setState en componente desmontado
   const isMounted = useRef(true);
-  // ✅ FIX: Evitar doble captura (condición de carrera)
   const hasCapture = useRef(false);
 
   const steps = mode === 'register' ? STEPS_REGISTER : STEPS_SESSION;
@@ -47,40 +40,36 @@ export default function FaceCamera({
   useEffect(() => {
     isMounted.current = true;
     startPulse();
+    // ✅ Esperar 600ms antes de montar CameraView (deja que el Modal termine)
+    const mountTimer = setTimeout(() => {
+      if (isMounted.current) setMountCamera(true);
+    }, 600);
     return () => {
       isMounted.current = false;
+      clearTimeout(mountTimer);
       if (timerRef.current) clearTimeout(timerRef.current);
       pulseAnim.stopAnimation();
     };
   }, []);
 
-  // ✅ FIX: useCallback con dependencias correctas
   const handleCapture = useCallback(async () => {
     if (hasCapture.current) return;
-
-    // ✅ FIX: Si cámara no está lista, reintentar en 500ms
     if (!cameraReady) {
       timerRef.current = setTimeout(() => {
         if (isMounted.current) handleCapture();
       }, 500);
       return;
     }
-
     hasCapture.current = true;
     if (isMounted.current) setCapturing(true);
-
     try {
       if (!cameraRef.current) throw new Error('Cámara no disponible');
-
       const photo = await cameraRef.current.takePictureAsync({
         base64: true,
-        quality: 0.7,
-        // ✅ FIX: skipProcessing evita crash de memoria en Android
+        quality: 0.6,
         skipProcessing: Platform.OS === 'android',
       });
-
       if (!isMounted.current) return;
-
       if (mode === 'register') {
         const fingerprint = JSON.stringify({ timestamp: Date.now(), mode: 'register' });
         onSuccess?.({ photo: photo.base64, fingerprint });
@@ -97,21 +86,18 @@ export default function FaceCamera({
   }, [cameraReady, mode, onSuccess, onError]);
 
   useEffect(() => {
+    // ✅ No arrancar los pasos hasta que la cámara esté montada
+    if (!mountCamera) return;
     const currentKey = steps[stepIdx]?.key;
-
     if (currentKey === 'capture') {
       handleCapture();
       return;
     }
-
     timerRef.current = setTimeout(() => {
-      if (isMounted.current) {
-        setStepIdx(prev => Math.min(prev + 1, steps.length - 1));
-      }
+      if (isMounted.current) setStepIdx(prev => Math.min(prev + 1, steps.length - 1));
     }, 3000);
-
     return () => clearTimeout(timerRef.current);
-  }, [stepIdx, handleCapture]);
+  }, [stepIdx, handleCapture, mountCamera]);
 
   const startPulse = () => {
     Animated.loop(
@@ -142,13 +128,16 @@ export default function FaceCamera({
 
   return (
     <View style={styles.container}>
-      <CameraView
-        ref={cameraRef}
-        style={StyleSheet.absoluteFill}
-        facing="front"
-        // ✅ FIX: Sin este callback, takePictureAsync crashea en Android
-        onCameraReady={() => setCameraReady(true)}
-      />
+      {/* ✅ Solo montar CameraView después del delay */}
+      {mountCamera && (
+        <CameraView
+          ref={cameraRef}
+          style={StyleSheet.absoluteFill}
+          facing="front"
+          onCameraReady={() => setCameraReady(true)}
+        />
+      )}
+
       <View style={styles.overlay} pointerEvents="none" />
       <View style={styles.ovalWrapper} pointerEvents="none">
         <Animated.View style={[styles.oval, { transform: [{ scale: pulseAnim }] }]} />
@@ -168,8 +157,10 @@ export default function FaceCamera({
         </View>
       </View>
       <View style={styles.messageBox} pointerEvents="none">
-        <Text style={styles.messageText}>{currentStep?.instruction}</Text>
-        {currentStep?.key !== 'capture' && (
+        <Text style={styles.messageText}>
+          {mountCamera ? currentStep?.instruction : '⏳ Iniciando cámara...'}
+        </Text>
+        {mountCamera && currentStep?.key !== 'capture' && (
           <Text style={styles.messageHint}>Mantén la posición...</Text>
         )}
       </View>
@@ -177,7 +168,6 @@ export default function FaceCamera({
   );
 }
 
-// styles igual que antes — no cambió nada
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
   permText: { color: '#fff', fontSize: 16, textAlign: 'center', padding: 20 },
