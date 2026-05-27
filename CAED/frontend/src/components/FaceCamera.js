@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, Animated, TouchableOpacity, Dimensions, Alert
+  View, Text, StyleSheet, Animated, TouchableOpacity, Dimensions
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { COLORS, FONTS, RADIUS } from '../utils/theme';
@@ -25,7 +25,6 @@ export default function FaceCamera({
   const cameraRef = useRef(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [stepIdx, setStepIdx] = useState(0);
-  const [countdown, setCountdown] = useState(3);
   const [capturing, setCapturing] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const timerRef = useRef(null);
@@ -37,7 +36,6 @@ export default function FaceCamera({
   ];
 
   useEffect(() => {
-    if (!permission?.granted) requestPermission();
     startPulse();
     return () => {
       clearTimeout(timerRef.current);
@@ -50,7 +48,6 @@ export default function FaceCamera({
       handleCapture();
       return;
     }
-    setCountdown(3);
     timerRef.current = setTimeout(() => advanceStep(), 3000);
     return () => clearTimeout(timerRef.current);
   }, [stepIdx]);
@@ -74,7 +71,6 @@ export default function FaceCamera({
     try {
       if (!cameraRef.current) throw new Error('Cámara no disponible');
       const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.8 });
-
       if (mode === 'register') {
         const fingerprint = JSON.stringify({ timestamp: Date.now(), mode: 'register' });
         onSuccess?.({ photo: photo.base64, fingerprint });
@@ -104,7 +100,7 @@ export default function FaceCamera({
   );
 
   const currentStep = steps[stepIdx];
-  const progressPct = ((stepIdx) / (steps.length - 1)) * 100;
+  const progressPct = (stepIdx / (steps.length - 1)) * 100;
 
   return (
     <View style={styles.container}>
@@ -114,15 +110,12 @@ export default function FaceCamera({
         facing="front"
       />
 
-      {/* Overlay oscuro */}
       <View style={styles.overlay} pointerEvents="none" />
 
-      {/* Óvalo animado */}
       <View style={styles.ovalWrapper} pointerEvents="none">
         <Animated.View style={[styles.oval, { transform: [{ scale: pulseAnim }] }]} />
       </View>
 
-      {/* Barra de progreso */}
       <View style={styles.progressContainer} pointerEvents="none">
         <View style={styles.progressBar}>
           <View style={[styles.progressFill, { width: `${progressPct}%` }]} />
@@ -138,7 +131,6 @@ export default function FaceCamera({
         </View>
       </View>
 
-      {/* Mensaje */}
       <View style={styles.messageBox} pointerEvents="none">
         <Text style={styles.messageText}>{currentStep?.instruction}</Text>
         {currentStep?.key !== 'capture' && (
