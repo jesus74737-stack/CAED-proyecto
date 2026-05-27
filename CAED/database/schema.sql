@@ -60,7 +60,7 @@ CREATE TABLE usuario (
   cedula VARCHAR(20) UNIQUE NOT NULL,
   email VARCHAR(150) UNIQUE NOT NULL,
   telefono VARCHAR(20),
-  foto VARCHAR(500),
+  foto TEXT,
   push_token VARCHAR(200),
   rol VARCHAR(20) NOT NULL CHECK (rol IN ('profesor', 'estudiante', 'admin')),
   password VARCHAR(255) NOT NULL,
