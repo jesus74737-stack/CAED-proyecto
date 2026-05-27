@@ -38,12 +38,12 @@ router.post('/login', async (req, res) => {
       `SELECT id FROM semestre WHERE fecha_inicio <= NOW() AND fecha_fin >= NOW() LIMIT 1`
     );
 
+    // ✅ CORRECCIÓN: foto NO va en el JWT (base64 hace el token gigante y rompe AsyncStorage)
     const payload = {
       id: user.id,
       nombre: user.nombre,
       cedula: user.cedula,
       email: user.email,
-      foto: user.foto,
       rol: user.rol,
       profesor_id: user.profesor_id,
       admin_id: user.admin_id,
@@ -59,7 +59,8 @@ router.post('/login', async (req, res) => {
       [user.id, 'LOGIN', 'Inicio de sesión exitoso']
     );
 
-    res.json({ token, user: payload });
+    // ✅ foto se manda aparte en la respuesta, no dentro del JWT
+    res.json({ token, user: { ...payload, foto: user.foto } });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Error del servidor' });
@@ -75,7 +76,6 @@ router.post('/register', async (req, res) => {
     await client.query('BEGIN');
     const hash = await bcrypt.hash(password, 10);
 
-    // CORRECCIÓN: foto puede ser base64 largo, la columna debe ser TEXT en la BD
     const result = await client.query(
       `INSERT INTO usuario (nombre, cedula, email, telefono, password, rol, foto, estado)
        VALUES ($1,$2,$3,$4,$5,$6,$7,'pendiente') RETURNING id`,
