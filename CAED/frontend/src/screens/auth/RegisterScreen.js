@@ -273,7 +273,8 @@ export default function RegisterScreen({ navigation }) {
 
       </ScrollView>
 
-      <Modal visible={showCamera} animationType="slide" statusBarTranslucent>
+      {/* ✅ CORRECCIÓN: transparent={false} evita crash de cámara en Android */}
+      <Modal visible={showCamera} animationType="slide" statusBarTranslucent transparent={false}>
         <View style={{ flex: 1 }}>
           <FaceCamera
             mode="register"
