@@ -38,9 +38,23 @@ export default function LoginScreen({ navigation }) {
     setLoading(true);
     try {
       await login(cedula.trim(), password);
-    } catch {
+    } catch (error) {
       shake();
-      setErrors({ general: 'Cédula o contraseña incorrecta' });
+      // Mostrar el mensaje real del servidor en lugar de uno genérico
+      const serverMsg = error?.response?.data?.message;
+      const statusCode = error?.response?.status;
+
+      let msg = 'Error al conectar con el servidor. Intenta de nuevo.';
+
+      if (statusCode === 401) {
+        msg = 'Cédula o contraseña incorrecta';
+      } else if (statusCode === 403) {
+        msg = serverMsg || 'Tu cuenta aún no ha sido aprobada por el administrador';
+      } else if (serverMsg) {
+        msg = serverMsg;
+      }
+
+      setErrors({ general: msg });
     } finally {
       setLoading(false);
     }
@@ -71,7 +85,9 @@ export default function LoginScreen({ navigation }) {
 
         {errors.general && (
           <Animated.View style={[styles.errorBanner, { transform: [{ translateX: shakeAnim }] }]}>
-            <Text style={styles.errorBannerText}>❌ {errors.general}</Text>
+            <Text style={styles.errorBannerText}>
+              {errors.general.includes('aprobada') ? '⏳' : '❌'} {errors.general}
+            </Text>
           </Animated.View>
         )}
 
