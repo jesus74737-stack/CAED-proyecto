@@ -13,15 +13,17 @@ router.post('/activar', auth, soloProfesor, async (req, res) => {
     await client.query('BEGIN');
     const hoy = moment().format('YYYY-MM-DD');
 
-    // Verificar sesión duplicada
+    // ── Si ya existe sesión hoy → devolverla directamente sin error ──
     const duplicada = await client.query(
-      `SELECT id FROM sesion_clase WHERE carga_academica_id = $1 AND fecha = $2 AND estado != 'inasistencia'`,
+      `SELECT * FROM sesion_clase WHERE carga_academica_id = $1 AND fecha = $2 AND estado != 'inasistencia'`,
       [carga_academica_id, hoy]
     );
-    if (duplicada.rows.length > 0)
-      return res.status(400).json({ message: 'Ya existe una sesión activa para esta clase hoy' });
+    if (duplicada.rows.length > 0) {
+      await client.query('COMMIT');
+      return res.json(duplicada.rows[0]); // ← devuelve la sesión existente sin error
+    }
 
-    // Verificar horario oficial
+    // Verificar clase existe
     const carga = await client.query(
       `SELECT * FROM carga_academica WHERE id = $1`,
       [carga_academica_id]
@@ -29,7 +31,7 @@ router.post('/activar', auth, soloProfesor, async (req, res) => {
     if (carga.rows.length === 0)
       return res.status(404).json({ message: 'Clase no encontrada' });
 
-    // Verificar si es feriado
+    // Verificar feriado
     const feriado = await client.query(
       `SELECT id FROM calendario_academico WHERE fecha = $1 AND tipo IN ('feriado', 'receso')`,
       [hoy]
@@ -39,19 +41,17 @@ router.post('/activar', auth, soloProfesor, async (req, res) => {
 
     // Obtener corte activo
     const corte = await client.query(
-      `SELECT id FROM corte WHERE fecha_inicio <= NOW() AND fecha_fin >= NOW() LIMIT 1`
+      `SELECT id FROM corte WHERE fecha_inicio <= NOW() AND fecha_fin >= NOW()`
     );
     if (corte.rows.length === 0)
       return res.status(400).json({ message: 'No hay un corte activo en este momento' });
 
     const ahora = moment();
-    const ventanaNormalFin = moment().add(carga.rows[0].horario_fin ? 0 : 15, 'minutes');
     const ventanaTardioFin = moment().add(parseInt(process.env.MINUTOS_VENTANA_TARDIO) || 30, 'minutes');
-
-    // Calcular estado del profesor (presente o tardío)
     const horarioInicio = moment(carga.rows[0].horario_inicio, 'HH:mm');
     const minutosRetraso = ahora.diff(horarioInicio, 'minutes');
     const estadoProfesor = minutosRetraso > 0 ? 'tardio' : 'presente';
+    const ventanaNormalFin = moment(carga.rows[0].horario_inicio, 'HH:mm').add(15, 'minutes');
 
     // Crear sesión
     const sesion = await client.query(
@@ -140,7 +140,6 @@ router.post('/:id/habilitar', auth, soloProfesor, async (req, res) => {
     if (!sesion.rows[0] || sesion.rows[0].estado !== 'activa')
       return res.status(400).json({ message: 'Sesión no activa' });
 
-    // Crear o actualizar registro del estudiante
     await pool.query(
       `INSERT INTO asistencia_estudiante (sesion_id, estudiante_id, habilitado_por_profesor)
        VALUES ($1, $2, true)
@@ -148,7 +147,6 @@ router.post('/:id/habilitar', auth, soloProfesor, async (req, res) => {
       [id, estudianteId]
     );
 
-    // Notificar al estudiante
     await enviarNotificacion(estudianteId, 'Asistencia habilitada', 'Tu profesor te ha habilitado para firmar la asistencia');
 
     res.json({ message: 'Estudiante habilitado' });
@@ -157,7 +155,7 @@ router.post('/:id/habilitar', auth, soloProfesor, async (req, res) => {
   }
 });
 
-// Firmar asistencia (estudiante)
+// Firmar asistencia (estudiante) — con verificación GPS
 router.post('/:id/firmar', auth, async (req, res) => {
   const { id } = req.params;
   const { coordenadas } = req.body;
@@ -176,6 +174,33 @@ router.post('/:id/firmar', auth, async (req, res) => {
 
     if (registro.rows[0]?.hora_firma)
       return res.status(400).json({ message: 'Ya firmaste la asistencia' });
+
+    // ── Verificar GPS del estudiante ──
+    if (coordenadas) {
+      const campusResult = await pool.query(
+        `SELECT coordenadas_gps, radio_permitido_metros FROM universidad`
+      );
+      if (campusResult.rows.length > 0) {
+        const [campusLat, campusLng] = campusResult.rows[0].coordenadas_gps.split(',').map(Number);
+        const radio = campusResult.rows[0].radio_permitido_metros;
+        const [estLat, estLng] = coordenadas.split(',').map(Number);
+
+        // Fórmula Haversine
+        const R = 6371000;
+        const dLat = (estLat - campusLat) * Math.PI / 180;
+        const dLng = (estLng - campusLng) * Math.PI / 180;
+        const a = Math.sin(dLat/2) ** 2 +
+                  Math.cos(campusLat * Math.PI/180) * Math.cos(estLat * Math.PI/180) *
+                  Math.sin(dLng/2) ** 2;
+        const distancia = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+        if (distancia > radio) {
+          return res.status(403).json({
+            message: 'Debes estar dentro del campus para firmar la asistencia'
+          });
+        }
+      }
+    }
 
     const ahora = moment();
     const ventanaNormal = moment(sesion.rows[0].ventana_normal_fin);
