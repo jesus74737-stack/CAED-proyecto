@@ -11,23 +11,37 @@ import { StatusBadge } from '../../components/UIComponents';
 import Toast from 'react-native-toast-message';
 import moment from 'moment';
 import 'moment/locale/es';
+import api from '../../services/api';
 moment.locale('es');
-
-const CAMPUS_COORDS = { latitude: 10.9639, longitude: -74.7964 };
-const RADIO_CAMPUS = 500;
 
 export default function ActivarSesionScreen({ route, navigation }) {
   const { user } = useAuth();
   const { clase } = route.params || {};
   const [phase, setPhase] = useState('gps');
-  // gps → camera → sesionActiva
   const [loading, setLoading] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const [coordenadas, setCoordenadas] = useState(null);
   const [sesion, setSesion] = useState(null);
   const [estudiantes, setEstudiantes] = useState([]);
   const [habilitando, setHabilitando] = useState(null);
-  const [timer, setTimer] = useState(null);
+  const [campusConfig, setCampusConfig] = useState({
+    latitude: 11.5140459,
+    longitude: -72.8691971,
+    radio: 2000,
+  });
+
+  // Cargar config del campus desde la DB
+  useEffect(() => {
+    const cargarCampus = async () => {
+      try {
+        const res = await api.get('/admin/campus-config');
+        setCampusConfig(res.data);
+      } catch (e) {
+        console.log('Usando coordenadas por defecto');
+      }
+    };
+    cargarCampus();
+  }, []);
 
   useEffect(() => {
     if (sesion) {
@@ -49,7 +63,11 @@ export default function ActivarSesionScreen({ route, navigation }) {
     setLoading(true);
     try {
       const coords = await locationService.getCurrentLocation();
-      const dentro = locationService.isInsideCampus(coords, CAMPUS_COORDS, RADIO_CAMPUS);
+      const campusCoords = {
+        latitude: campusConfig.latitude,
+        longitude: campusConfig.longitude,
+      };
+      const dentro = locationService.isInsideCampus(coords, campusCoords, campusConfig.radio);
       if (!dentro) {
         Alert.alert('📍 Fuera del campus', 'Debes estar físicamente dentro del campus universitario para activar la sesión.');
         setLoading(false);
@@ -64,7 +82,7 @@ export default function ActivarSesionScreen({ route, navigation }) {
     }
   };
 
-  // ── Paso 2: Face (parpadeo + comparación) ──
+  // ── Paso 2: Face ──
   const handleFaceSuccess = async ({ photo, confidence }) => {
     setShowCamera(false);
     setLoading(true);
@@ -177,6 +195,12 @@ export default function ActivarSesionScreen({ route, navigation }) {
           ))}
         </View>
 
+        <View style={styles.campusInfo}>
+          <Text style={styles.campusInfoText}>
+            📡 Radio del campus: {campusConfig.radio}m
+          </Text>
+        </View>
+
         <TouchableOpacity style={styles.mainBtn} onPress={verificarGPS} disabled={loading}>
           {loading
             ? <ActivityIndicator color={COLORS.white} />
@@ -258,7 +282,6 @@ export default function ActivarSesionScreen({ route, navigation }) {
       </View>
 
       <ScrollView style={styles.root}>
-        {/* Stats */}
         <View style={styles.statsRow}>
           <View style={[styles.statBox, { borderTopColor: COLORS.primary }]}>
             <Text style={styles.statNum}>{estudiantes.length}</Text>
@@ -280,12 +303,10 @@ export default function ActivarSesionScreen({ route, navigation }) {
           </View>
         )}
 
-        {/* Botón habilitar todos */}
         <TouchableOpacity style={styles.habilitarTodosBtn} onPress={habilitarTodos}>
           <Text style={styles.habilitarTodosText}>👥 Habilitar a todos</Text>
         </TouchableOpacity>
 
-        {/* Lista estudiantes */}
         {estudiantes.map(est => (
           <View key={est.id} style={[styles.estCard, est.firmado && styles.estFirmado]}>
             <View style={styles.estAvatar}>
@@ -335,9 +356,7 @@ const styles = StyleSheet.create({
   backBtnText: { ...FONTS.small, color: COLORS.white },
   closeBtn: { backgroundColor: COLORS.danger, borderRadius: RADIUS.sm, paddingVertical: 8, paddingHorizontal: 16 },
   closeBtnText: { ...FONTS.label, color: COLORS.white },
-
   content: { padding: 20, paddingBottom: 40 },
-
   claseCard: {
     backgroundColor: COLORS.white, borderRadius: RADIUS.lg, padding: 24,
     alignItems: 'center', marginBottom: 20, ...SHADOWS.medium,
@@ -351,10 +370,9 @@ const styles = StyleSheet.create({
   claseAula: { ...FONTS.small, color: COLORS.gray, marginBottom: 4 },
   claseHora: { ...FONTS.small, color: COLORS.secondary, marginBottom: 4 },
   claseCarrera: { ...FONTS.small, color: COLORS.gray },
-
   stepsCard: {
     backgroundColor: COLORS.white, borderRadius: RADIUS.lg, padding: 20,
-    marginBottom: 24, ...SHADOWS.small,
+    marginBottom: 16, ...SHADOWS.small,
   },
   stepsTitle: { ...FONTS.h4, color: COLORS.dark, marginBottom: 16 },
   stepRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 16, gap: 14 },
@@ -369,13 +387,16 @@ const styles = StyleSheet.create({
   stepTitle2: { fontWeight: '600' },
   stepDesc: { ...FONTS.small, color: COLORS.gray, marginTop: 2 },
   stepInfo: { flex: 1 },
-
+  campusInfo: {
+    backgroundColor: '#EEF2FF', borderRadius: RADIUS.md,
+    padding: 10, marginBottom: 16, alignItems: 'center',
+  },
+  campusInfoText: { ...FONTS.small, color: COLORS.primary },
   mainBtn: {
     backgroundColor: COLORS.primary, borderRadius: RADIUS.md,
     paddingVertical: 17, alignItems: 'center', ...SHADOWS.medium,
   },
   mainBtnText: { ...FONTS.h4, color: COLORS.white },
-
   cameraIntroContent: { flex: 1, padding: 20, justifyContent: 'center' },
   cameraIntroCard: {
     backgroundColor: COLORS.white, borderRadius: RADIUS.xl, padding: 28,
@@ -390,21 +411,18 @@ const styles = StyleSheet.create({
     paddingVertical: 10, paddingHorizontal: 16, marginTop: 16,
   },
   gpsConfirmText: { ...FONTS.small, color: COLORS.success, fontWeight: '600' },
-
   cancelCam: {
     position: 'absolute', bottom: 40, left: 20, right: 20,
     backgroundColor: 'rgba(0,0,0,0.75)', borderRadius: RADIUS.md,
     padding: 16, alignItems: 'center',
   },
   cancelCamText: { ...FONTS.h4, color: COLORS.white },
-
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(10,36,99,0.85)',
     justifyContent: 'center', alignItems: 'center',
   },
   loadingText: { ...FONTS.h4, color: COLORS.white, marginTop: 16 },
-
   statsRow: { flexDirection: 'row', gap: 10, padding: 16 },
   statBox: {
     flex: 1, backgroundColor: COLORS.white, borderRadius: RADIUS.md,
@@ -412,19 +430,16 @@ const styles = StyleSheet.create({
   },
   statNum: { ...FONTS.h2, color: COLORS.primary },
   statLabel: { ...FONTS.tiny, color: COLORS.gray, marginTop: 2 },
-
   tardioWarning: {
     backgroundColor: COLORS.warningLight, marginHorizontal: 16, borderRadius: RADIUS.md,
     padding: 12, borderLeftWidth: 3, borderLeftColor: COLORS.warning,
   },
   tardioText: { ...FONTS.small, color: '#7D5A2A' },
-
   habilitarTodosBtn: {
     backgroundColor: COLORS.secondary, marginHorizontal: 16, marginVertical: 12,
     borderRadius: RADIUS.md, padding: 14, alignItems: 'center', ...SHADOWS.small,
   },
   habilitarTodosText: { ...FONTS.h4, color: COLORS.white },
-
   estCard: {
     backgroundColor: COLORS.white, marginHorizontal: 16, marginBottom: 8,
     borderRadius: RADIUS.md, padding: 14, flexDirection: 'row',
