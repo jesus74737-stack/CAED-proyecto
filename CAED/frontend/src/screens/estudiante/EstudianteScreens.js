@@ -10,10 +10,11 @@ import { StatusBadge } from '../../components/UIComponents';
 import Toast from 'react-native-toast-message';
 import moment from 'moment';
 import 'moment/locale/es';
+import api from '../../services/api';
 moment.locale('es');
 
-const CAMPUS_COORDS = { latitude: 10.9639, longitude: -74.7964 };
-const RADIO_CAMPUS = 500;
+// Coordenadas por defecto (Universidad de La Guajira)
+const CAMPUS_DEFAULT = { latitude: 11.5140459, longitude: -72.8691971, radio: 2000 };
 
 // ══════════════════════════════════════════
 // HOME ESTUDIANTE
@@ -98,12 +99,27 @@ export function FirmarAsistenciaScreen({ route, navigation }) {
   const { sesion } = route.params || {};
   const [loading, setLoading] = useState(false);
   const [verificando, setVerificando] = useState(false);
+  const [campusConfig, setCampusConfig] = useState(CAMPUS_DEFAULT);
+
+  // Cargar coordenadas del campus desde la DB
+  useEffect(() => {
+    const cargarCampus = async () => {
+      try {
+        const res = await api.get('/admin/campus-config');
+        setCampusConfig(res.data);
+      } catch {
+        // Usar coordenadas por defecto si falla
+      }
+    };
+    cargarCampus();
+  }, []);
 
   const firmar = async () => {
     setVerificando(true);
     try {
       const coords = await locationService.getCurrentLocation();
-      const dentro = locationService.isInsideCampus(coords, CAMPUS_COORDS, RADIO_CAMPUS);
+      const campusCoords = { latitude: campusConfig.latitude, longitude: campusConfig.longitude };
+      const dentro = locationService.isInsideCampus(coords, campusCoords, campusConfig.radio);
       if (!dentro) {
         Alert.alert('📍 Fuera del campus', 'Debes estar físicamente dentro del campus para firmar la asistencia.');
         return;
@@ -145,8 +161,15 @@ export function FirmarAsistenciaScreen({ route, navigation }) {
             <Text style={styles.firmarInfoItem}>✅ Debes estar dentro del campus</Text>
             <Text style={styles.firmarInfoItem}>📝 Se registrará la hora exacta</Text>
           </View>
+          <View style={styles.campusInfo}>
+            <Text style={styles.campusInfoText}>📡 Radio del campus: {campusConfig.radio}m</Text>
+          </View>
         </View>
-        <TouchableOpacity style={[styles.firmarBtn2, (loading || verificando) && styles.firmarBtnDisabled]} onPress={firmar} disabled={loading || verificando}>
+        <TouchableOpacity
+          style={[styles.firmarBtn2, (loading || verificando) && styles.firmarBtnDisabled]}
+          onPress={firmar}
+          disabled={loading || verificando}
+        >
           {verificando ? <><ActivityIndicator color={COLORS.white} size="small" /><Text style={styles.firmarBtnText2}>  Verificando ubicación...</Text></>
             : loading ? <><ActivityIndicator color={COLORS.white} size="small" /><Text style={styles.firmarBtnText2}>  Firmando...</Text></>
             : <Text style={styles.firmarBtnText2}>📍 Verificar ubicación y firmar</Text>
@@ -268,6 +291,8 @@ const styles = StyleSheet.create({
   firmarInfoBox: { backgroundColor: COLORS.background, borderRadius: RADIUS.md, padding: 16, width: '100%', gap: 8 },
   firmarInfoTitle: { ...FONTS.label, color: COLORS.dark, marginBottom: 4 },
   firmarInfoItem: { ...FONTS.small, color: COLORS.gray },
+  campusInfo: { backgroundColor: '#EEF2FF', borderRadius: RADIUS.md, padding: 10, marginTop: 12, width: '100%', alignItems: 'center' },
+  campusInfoText: { ...FONTS.small, color: COLORS.primary },
   firmarBtn2: { backgroundColor: COLORS.primary, borderRadius: RADIUS.md, paddingVertical: 17, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', ...SHADOWS.medium },
   firmarBtnDisabled: { backgroundColor: COLORS.gray },
   firmarBtnText2: { ...FONTS.h4, color: COLORS.white },
