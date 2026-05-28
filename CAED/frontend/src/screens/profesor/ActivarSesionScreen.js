@@ -24,21 +24,24 @@ export default function ActivarSesionScreen({ route, navigation }) {
   const [sesion, setSesion] = useState(null);
   const [estudiantes, setEstudiantes] = useState([]);
   const [habilitando, setHabilitando] = useState(null);
+
+  // ── Fix: recordar verificación facial ──
+  const [faceVerificado, setFaceVerificado] = useState(false);
+  const [faceData, setFaceData] = useState(null);
+
+  // ── Config campus desde DB ──
   const [campusConfig, setCampusConfig] = useState({
     latitude: 11.5140459,
     longitude: -72.8691971,
     radio: 2000,
   });
 
-  // Cargar config del campus desde la DB
   useEffect(() => {
     const cargarCampus = async () => {
       try {
         const res = await api.get('/admin/campus-config');
         setCampusConfig(res.data);
-      } catch (e) {
-        console.log('Usando coordenadas por defecto');
-      }
+      } catch {}
     };
     cargarCampus();
   }, []);
@@ -63,10 +66,7 @@ export default function ActivarSesionScreen({ route, navigation }) {
     setLoading(true);
     try {
       const coords = await locationService.getCurrentLocation();
-      const campusCoords = {
-        latitude: campusConfig.latitude,
-        longitude: campusConfig.longitude,
-      };
+      const campusCoords = { latitude: campusConfig.latitude, longitude: campusConfig.longitude };
       const dentro = locationService.isInsideCampus(coords, campusCoords, campusConfig.radio);
       if (!dentro) {
         Alert.alert('📍 Fuera del campus', 'Debes estar físicamente dentro del campus universitario para activar la sesión.');
@@ -85,6 +85,12 @@ export default function ActivarSesionScreen({ route, navigation }) {
   // ── Paso 2: Face ──
   const handleFaceSuccess = async ({ photo, confidence }) => {
     setShowCamera(false);
+    setFaceVerificado(true);
+    setFaceData({ photo, confidence });
+    await activarConFoto(photo, confidence);
+  };
+
+  const activarConFoto = async (photo, confidence) => {
     setLoading(true);
     try {
       const data = {
@@ -98,8 +104,8 @@ export default function ActivarSesionScreen({ route, navigation }) {
       setPhase('activa');
       Toast.show({ type: 'success', text1: '✅ Sesión activada', text2: `Confianza: ${confidence}%` });
     } catch (e) {
+      // Cara ya verificada — no pedir de nuevo, solo mostrar error
       Alert.alert('Error', e.response?.data?.message || 'No se pudo activar la sesión');
-      setPhase('camera');
     } finally {
       setLoading(false);
     }
@@ -179,9 +185,9 @@ export default function ActivarSesionScreen({ route, navigation }) {
         <View style={styles.stepsCard}>
           <Text style={styles.stepsTitle}>Pasos de verificación</Text>
           {[
-            { num: '1', icon: '📍', title: 'Ubicación GPS', desc: 'Verificar que estás dentro del campus', done: false, active: true },
-            { num: '2', icon: '👁️', title: 'Verificación facial', desc: 'Parpadeo natural + reconocimiento', done: false, active: false },
-            { num: '3', icon: '✅', title: 'Sesión activa', desc: 'Habilita estudiantes y registra asistencia', done: false, active: false },
+            { num: '1', icon: '📍', title: 'Ubicación GPS', desc: 'Verificar que estás dentro del campus', active: true },
+            { num: '2', icon: '👁️', title: 'Verificación facial', desc: 'Parpadeo natural + reconocimiento', active: false },
+            { num: '3', icon: '✅', title: 'Sesión activa', desc: 'Habilita estudiantes y registra asistencia', active: false },
           ].map((s, i) => (
             <View key={i} style={styles.stepRow}>
               <View style={[styles.stepNum, s.active && styles.stepNumActive]}>
@@ -196,9 +202,7 @@ export default function ActivarSesionScreen({ route, navigation }) {
         </View>
 
         <View style={styles.campusInfo}>
-          <Text style={styles.campusInfoText}>
-            📡 Radio del campus: {campusConfig.radio}m
-          </Text>
+          <Text style={styles.campusInfoText}>📡 Radio del campus: {campusConfig.radio}m</Text>
         </View>
 
         <TouchableOpacity style={styles.mainBtn} onPress={verificarGPS} disabled={loading}>
@@ -224,19 +228,38 @@ export default function ActivarSesionScreen({ route, navigation }) {
 
       <View style={styles.cameraIntroContent}>
         <View style={styles.cameraIntroCard}>
-          <Text style={styles.cameraIntroEmoji}>👁️</Text>
-          <Text style={styles.cameraIntroTitle}>Verificación rápida</Text>
+          <Text style={styles.cameraIntroEmoji}>{faceVerificado ? '✅' : '👁️'}</Text>
+          <Text style={styles.cameraIntroTitle}>
+            {faceVerificado ? 'Cara verificada' : 'Verificación rápida'}
+          </Text>
           <Text style={styles.cameraIntroText}>
-            Solo necesitas{' '}
-            <Text style={styles.cameraIntroHighlight}>parpadear naturalmente</Text>
-            {' '}frente a la cámara. El sistema verificará tu identidad automáticamente.
+            {faceVerificado
+              ? 'Tu identidad ya fue verificada. Puedes reintentar activar la sesión sin abrir la cámara de nuevo.'
+              : <>Solo necesitas{' '}<Text style={styles.cameraIntroHighlight}>parpadear naturalmente</Text>{' '}frente a la cámara.</>
+            }
           </Text>
           <View style={styles.gpsConfirm}>
             <Text style={styles.gpsConfirmText}>✅ GPS verificado — Estás en el campus</Text>
           </View>
         </View>
-        <TouchableOpacity style={styles.mainBtn} onPress={() => setShowCamera(true)}>
-          <Text style={styles.mainBtnText}>📸 Abrir verificación facial</Text>
+
+        <TouchableOpacity
+          style={styles.mainBtn}
+          onPress={() => {
+            if (faceVerificado && faceData) {
+              activarConFoto(faceData.photo, faceData.confidence);
+            } else {
+              setShowCamera(true);
+            }
+          }}
+          disabled={loading}
+        >
+          {loading
+            ? <ActivityIndicator color={COLORS.white} />
+            : <Text style={styles.mainBtnText}>
+                {faceVerificado ? '🔄 Reintentar activación' : '📸 Abrir verificación facial'}
+              </Text>
+          }
         </TouchableOpacity>
       </View>
 
@@ -336,7 +359,6 @@ export default function ActivarSesionScreen({ route, navigation }) {
             )}
           </View>
         ))}
-
         <View style={{ height: 30 }} />
       </ScrollView>
     </View>
