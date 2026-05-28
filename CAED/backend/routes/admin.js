@@ -5,6 +5,20 @@ const PDFDocument = require('pdfkit');
 const ExcelJS = require('exceljs');
 const moment = require('moment');
 
+// ── CONFIG DEL CAMPUS (público, sin auth) ──────────────────────
+router.get('/campus-config', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT coordenadas_gps, radio_permitido_metros FROM universidad LIMIT 1'
+    );
+    const row = result.rows[0];
+    const [latitude, longitude] = row.coordenadas_gps.split(',').map(Number);
+    res.json({ latitude, longitude, radio: row.radio_permitido_metros });
+  } catch (e) {
+    res.status(500).json({ message: 'Error obteniendo config del campus' });
+  }
+});
+
 // Registros pendientes de aprobación
 router.get('/registros', auth, soloAdmin, async (req, res) => {
   const { estado = 'pendiente' } = req.query;
