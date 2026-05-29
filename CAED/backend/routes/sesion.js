@@ -13,17 +13,16 @@ router.post('/activar', auth, soloProfesor, async (req, res) => {
     await client.query('BEGIN');
     const hoy = moment().format('YYYY-MM-DD');
 
-    // ── Si ya existe sesión hoy → devolverla directamente sin error ──
+    // Si ya existe sesión hoy → devolverla directamente sin error
     const duplicada = await client.query(
       `SELECT * FROM sesion_clase WHERE carga_academica_id = $1 AND fecha = $2 AND estado != 'inasistencia'`,
       [carga_academica_id, hoy]
     );
     if (duplicada.rows.length > 0) {
       await client.query('COMMIT');
-      return res.json(duplicada.rows[0]); // ← devuelve la sesión existente sin error
+      return res.json(duplicada.rows[0]);
     }
 
-    // Verificar clase existe
     const carga = await client.query(
       `SELECT * FROM carga_academica WHERE id = $1`,
       [carga_academica_id]
@@ -31,7 +30,6 @@ router.post('/activar', auth, soloProfesor, async (req, res) => {
     if (carga.rows.length === 0)
       return res.status(404).json({ message: 'Clase no encontrada' });
 
-    // Verificar feriado
     const feriado = await client.query(
       `SELECT id FROM calendario_academico WHERE fecha = $1 AND tipo IN ('feriado', 'receso')`,
       [hoy]
@@ -39,7 +37,6 @@ router.post('/activar', auth, soloProfesor, async (req, res) => {
     if (feriado.rows.length > 0)
       return res.status(400).json({ message: 'Hoy es feriado o receso, no se puede activar sesión' });
 
-    // Obtener corte activo
     const corte = await client.query(
       `SELECT id FROM corte WHERE fecha_inicio <= NOW() AND fecha_fin >= NOW()`
     );
@@ -53,7 +50,6 @@ router.post('/activar', auth, soloProfesor, async (req, res) => {
     const estadoProfesor = minutosRetraso > 0 ? 'tardio' : 'presente';
     const ventanaNormalFin = moment(carga.rows[0].horario_inicio, 'HH:mm').add(15, 'minutes');
 
-    // Crear sesión
     const sesion = await client.query(
       `INSERT INTO sesion_clase 
        (carga_academica_id, corte_id, fecha, hora_activacion, foto_facial_profesor, coordenadas_gps, estado, ventana_normal_fin, ventana_tardio_fin, es_sustitucion)
@@ -70,14 +66,12 @@ router.post('/activar', auth, soloProfesor, async (req, res) => {
       ]
     );
 
-    // Registrar asistencia del profesor
     await client.query(
       `INSERT INTO asistencia_profesor (sesion_id, profesor_id, hora_firma, estado, minutos_retraso)
        VALUES ($1, $2, NOW(), $3, $4)`,
       [sesion.rows[0].id, profesor_id, estadoProfesor, Math.max(0, minutosRetraso)]
     );
 
-    // Log
     await client.query(
       `INSERT INTO log_actividad (usuario_id, accion, fecha_hora, coordenadas_gps, detalles)
        VALUES ($1, 'ACTIVAR_SESION', NOW(), $2, $3)`,
@@ -106,14 +100,12 @@ router.put('/:id/cerrar', auth, soloProfesor, async (req, res) => {
       [id]
     );
 
-    // Marcar ausentes a los que no firmaron
     await pool.query(
       `UPDATE asistencia_estudiante SET estado = 'ausente'
        WHERE sesion_id = $1 AND estado IS NULL`,
       [id]
     );
 
-    // Verificar si nadie firmó
     const firmados = await pool.query(
       `SELECT COUNT(*) FROM asistencia_estudiante WHERE sesion_id = $1 AND estado != 'ausente'`,
       [id]
@@ -175,7 +167,7 @@ router.post('/:id/firmar', auth, async (req, res) => {
     if (registro.rows[0]?.hora_firma)
       return res.status(400).json({ message: 'Ya firmaste la asistencia' });
 
-    // ── Verificar GPS del estudiante ──
+    // Verificar GPS del estudiante
     if (coordenadas) {
       const campusResult = await pool.query(
         `SELECT coordenadas_gps, radio_permitido_metros FROM universidad`
@@ -184,8 +176,6 @@ router.post('/:id/firmar', auth, async (req, res) => {
         const [campusLat, campusLng] = campusResult.rows[0].coordenadas_gps.split(',').map(Number);
         const radio = campusResult.rows[0].radio_permitido_metros;
         const [estLat, estLng] = coordenadas.split(',').map(Number);
-
-        // Fórmula Haversine
         const R = 6371000;
         const dLat = (estLat - campusLat) * Math.PI / 180;
         const dLng = (estLng - campusLng) * Math.PI / 180;
@@ -193,12 +183,8 @@ router.post('/:id/firmar', auth, async (req, res) => {
                   Math.cos(campusLat * Math.PI/180) * Math.cos(estLat * Math.PI/180) *
                   Math.sin(dLng/2) ** 2;
         const distancia = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
-        if (distancia > radio) {
-          return res.status(403).json({
-            message: 'Debes estar dentro del campus para firmar la asistencia'
-          });
-        }
+        if (distancia > radio)
+          return res.status(403).json({ message: 'Debes estar dentro del campus para firmar la asistencia' });
       }
     }
 
@@ -240,6 +226,23 @@ router.get('/activas', auth, async (req, res) => {
     res.json(result.rows);
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener sesiones' });
+  }
+});
+
+// Sesión activa del profesor (para banner del Home)
+router.get('/activa-profesor/:profesor_id', auth, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT sc.*, m.nombre as materia_nombre
+       FROM sesion_clase sc
+       JOIN carga_academica ca ON ca.id = sc.carga_academica_id
+       JOIN materia m ON m.id = ca.materia_id
+       WHERE ca.profesor_id = $1 AND sc.estado = 'activa' AND sc.fecha = CURRENT_DATE`,
+      [req.params.profesor_id]
+    );
+    res.json(r.rows[0] || null);
+  } catch {
+    res.json(null);
   }
 });
 
