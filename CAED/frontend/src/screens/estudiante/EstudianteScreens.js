@@ -13,12 +13,8 @@ import 'moment/locale/es';
 import api from '../../services/api';
 moment.locale('es');
 
-// Coordenadas por defecto (Universidad de La Guajira)
 const CAMPUS_DEFAULT = { latitude: 11.5140459, longitude: -72.8691971, radio: 2000 };
 
-// ══════════════════════════════════════════
-// HOME ESTUDIANTE
-// ══════════════════════════════════════════
 export function EstudianteHomeScreen({ navigation }) {
   const { user, logout } = useAuth();
   const [sesiones, setSesiones] = useState([]);
@@ -39,7 +35,6 @@ export function EstudianteHomeScreen({ navigation }) {
   const SesionCard = ({ item }) => {
     const firmado = !!item.hora_firma;
     const habilitado = item.habilitado && !firmado;
-
     return (
       <View style={[styles.sesionCard, firmado && styles.sesionFirmada, habilitado && styles.sesionHabilitada]}>
         <View style={styles.sesionHeader}>
@@ -92,24 +87,18 @@ export function EstudianteHomeScreen({ navigation }) {
   );
 }
 
-// ══════════════════════════════════════════
-// FIRMAR ASISTENCIA
-// ══════════════════════════════════════════
 export function FirmarAsistenciaScreen({ route, navigation }) {
   const { sesion } = route.params || {};
   const [loading, setLoading] = useState(false);
   const [verificando, setVerificando] = useState(false);
   const [campusConfig, setCampusConfig] = useState(CAMPUS_DEFAULT);
 
-  // Cargar coordenadas del campus desde la DB
   useEffect(() => {
     const cargarCampus = async () => {
       try {
         const res = await api.get('/admin/campus-config');
         setCampusConfig(res.data);
-      } catch {
-        // Usar coordenadas por defecto si falla
-      }
+      } catch {}
     };
     cargarCampus();
   }, []);
@@ -126,7 +115,8 @@ export function FirmarAsistenciaScreen({ route, navigation }) {
       }
       setVerificando(false);
       setLoading(true);
-      await estudianteService.firmarAsistencia(sesion.id, coords);
+      // ── Fix: coordenadas como string, no como objeto ──
+      await estudianteService.firmarAsistencia(sesion.id, `${coords.latitude},${coords.longitude}`);
       Toast.show({ type: 'success', text1: '✅ Asistencia firmada correctamente' });
       navigation.goBack();
     } catch (e) {
@@ -180,9 +170,6 @@ export function FirmarAsistenciaScreen({ route, navigation }) {
   );
 }
 
-// ══════════════════════════════════════════
-// HISTORIAL ESTUDIANTE
-// ══════════════════════════════════════════
 export function EstudianteHistorialScreen({ navigation }) {
   const { user } = useAuth();
   const [historial, setHistorial] = useState([]);
