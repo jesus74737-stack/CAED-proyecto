@@ -24,12 +24,8 @@ export default function ActivarSesionScreen({ route, navigation }) {
   const [sesion, setSesion] = useState(null);
   const [estudiantes, setEstudiantes] = useState([]);
   const [habilitando, setHabilitando] = useState(null);
-
-  // ── Fix: recordar verificación facial ──
   const [faceVerificado, setFaceVerificado] = useState(false);
   const [faceData, setFaceData] = useState(null);
-
-  // ── Config campus desde DB ──
   const [campusConfig, setCampusConfig] = useState({
     latitude: 11.5140459,
     longitude: -72.8691971,
@@ -61,7 +57,6 @@ export default function ActivarSesionScreen({ route, navigation }) {
     } catch {}
   };
 
-  // ── Paso 1: GPS ──
   const verificarGPS = async () => {
     setLoading(true);
     try {
@@ -82,7 +77,6 @@ export default function ActivarSesionScreen({ route, navigation }) {
     }
   };
 
-  // ── Paso 2: Face ──
   const handleFaceSuccess = async ({ photo, confidence }) => {
     setShowCamera(false);
     setFaceVerificado(true);
@@ -104,7 +98,6 @@ export default function ActivarSesionScreen({ route, navigation }) {
       setPhase('activa');
       Toast.show({ type: 'success', text1: '✅ Sesión activada', text2: `Confianza: ${confidence}%` });
     } catch (e) {
-      // Cara ya verificada — no pedir de nuevo, solo mostrar error
       Alert.alert('Error', e.response?.data?.message || 'No se pudo activar la sesión');
     } finally {
       setLoading(false);
@@ -119,7 +112,6 @@ export default function ActivarSesionScreen({ route, navigation }) {
     ]);
   };
 
-  // ── Habilitar estudiante ──
   const habilitarEst = async (est) => {
     setHabilitando(est.id);
     try {
@@ -152,7 +144,7 @@ export default function ActivarSesionScreen({ route, navigation }) {
         try {
           await profesorService.cerrarSesion(sesion.id);
           Toast.show({ type: 'success', text1: '✅ Sesión cerrada' });
-          navigation.goBack();
+          navigation.navigate('ProfesorHome');
         } catch {
           Alert.alert('Error', 'No se pudo cerrar la sesión');
         } finally {
@@ -172,7 +164,6 @@ export default function ActivarSesionScreen({ route, navigation }) {
         <Text style={styles.topBarTitle}>Activar sesión</Text>
         <View style={{ width: 80 }} />
       </View>
-
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.claseCard}>
           <View style={styles.claseIconBox}><Text style={styles.claseIcon}>📚</Text></View>
@@ -181,7 +172,6 @@ export default function ActivarSesionScreen({ route, navigation }) {
           <Text style={styles.claseHora}>⏰ {clase?.horario_inicio} — {clase?.horario_fin}</Text>
           <Text style={styles.claseCarrera}>🎓 {clase?.carrera_nombre}</Text>
         </View>
-
         <View style={styles.stepsCard}>
           <Text style={styles.stepsTitle}>Pasos de verificación</Text>
           {[
@@ -200,11 +190,9 @@ export default function ActivarSesionScreen({ route, navigation }) {
             </View>
           ))}
         </View>
-
         <View style={styles.campusInfo}>
           <Text style={styles.campusInfoText}>📡 Radio del campus: {campusConfig.radio}m</Text>
         </View>
-
         <TouchableOpacity style={styles.mainBtn} onPress={verificarGPS} disabled={loading}>
           {loading
             ? <ActivityIndicator color={COLORS.white} />
@@ -225,7 +213,6 @@ export default function ActivarSesionScreen({ route, navigation }) {
         <Text style={styles.topBarTitle}>Verificación facial</Text>
         <View style={{ width: 80 }} />
       </View>
-
       <View style={styles.cameraIntroContent}>
         <View style={styles.cameraIntroCard}>
           <Text style={styles.cameraIntroEmoji}>{faceVerificado ? '✅' : '👁️'}</Text>
@@ -234,7 +221,7 @@ export default function ActivarSesionScreen({ route, navigation }) {
           </Text>
           <Text style={styles.cameraIntroText}>
             {faceVerificado
-              ? 'Tu identidad ya fue verificada. Puedes reintentar activar la sesión sin abrir la cámara de nuevo.'
+              ? 'Tu identidad ya fue verificada. Puedes reintentar sin abrir la cámara de nuevo.'
               : <>Solo necesitas{' '}<Text style={styles.cameraIntroHighlight}>parpadear naturalmente</Text>{' '}frente a la cámara.</>
             }
           </Text>
@@ -242,7 +229,6 @@ export default function ActivarSesionScreen({ route, navigation }) {
             <Text style={styles.gpsConfirmText}>✅ GPS verificado — Estás en el campus</Text>
           </View>
         </View>
-
         <TouchableOpacity
           style={styles.mainBtn}
           onPress={() => {
@@ -262,7 +248,6 @@ export default function ActivarSesionScreen({ route, navigation }) {
           }
         </TouchableOpacity>
       </View>
-
       <Modal visible={showCamera} animationType="slide" statusBarTranslucent>
         <View style={{ flex: 1 }}>
           <FaceCamera
@@ -276,7 +261,6 @@ export default function ActivarSesionScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
       </Modal>
-
       {loading && (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="large" color={COLORS.white} />
@@ -295,6 +279,12 @@ export default function ActivarSesionScreen({ route, navigation }) {
   return (
     <View style={styles.root}>
       <View style={[styles.topBar, styles.topBarGreen]}>
+        <TouchableOpacity
+          onPress={() => navigation.navigate('ProfesorHome')}
+          style={styles.backBtn}
+        >
+          <Text style={styles.backBtnText}>← Inicio</Text>
+        </TouchableOpacity>
         <View>
           <Text style={styles.topBarTitle}>🟢 Sesión activa</Text>
           <Text style={styles.topBarSub}>{clase?.materia_nombre}</Text>
