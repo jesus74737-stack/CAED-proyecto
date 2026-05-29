@@ -9,6 +9,7 @@ import { COLORS, FONTS, RADIUS, SHADOWS } from '../../utils/theme';
 import { StatCard, StatusBadge } from '../../components/UIComponents';
 import moment from 'moment';
 import 'moment/locale/es';
+import api from '../../services/api';
 moment.locale('es');
 
 // ══════════════════════════════════════════
@@ -19,11 +20,31 @@ export function ProfesorHomeScreen({ navigation }) {
   const [clases, setClases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [sesionActiva, setSesionActiva] = useState(null);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    // Revisar si hay sesión activa cada 30 segundos
+    const t = setInterval(checkSesionActiva, 30000);
+    return () => clearInterval(t);
+  }, []);
+
   const load = async () => {
-    try { const r = await profesorService.getCargaAcademica(user.profesor_id, user.semestre_activo); setClases(r.data); }
-    catch {} finally { setLoading(false); setRefreshing(false); }
+    try {
+      const r = await profesorService.getCargaAcademica(user.profesor_id, user.semestre_activo);
+      setClases(r.data);
+      await checkSesionActiva();
+    } catch {}
+    finally { setLoading(false); setRefreshing(false); }
+  };
+
+  const checkSesionActiva = async () => {
+    try {
+      const r = await api.get(`/sesion/activa-profesor/${user.profesor_id}`);
+      setSesionActiva(r.data || null);
+    } catch {
+      setSesionActiva(null);
+    }
   };
 
   const hoy = moment().format('dddd').toLowerCase();
@@ -82,6 +103,27 @@ export function ProfesorHomeScreen({ navigation }) {
         <TouchableOpacity onPress={logout} style={styles.logoutBtn}><Text style={styles.logoutText}>Salir</Text></TouchableOpacity>
       </View>
 
+      {/* ── Banner sesión activa ── */}
+      {sesionActiva && (
+        <TouchableOpacity
+          style={styles.sesionActivaBanner}
+          onPress={() => {
+            const claseActiva = clases.find(c => c.id === sesionActiva.carga_academica_id);
+            navigation.navigate('Activar', { clase: claseActiva || { id: sesionActiva.carga_academica_id, materia_nombre: sesionActiva.materia_nombre || 'Clase activa' } });
+          }}
+          activeOpacity={0.85}
+        >
+          <View style={styles.sesionActivaLeft}>
+            <View style={styles.sesionActivaDot} />
+            <View>
+              <Text style={styles.sesionActivaTitle}>🟢 Sesión activa en curso</Text>
+              <Text style={styles.sesionActivaSub}>Toca para volver a la sesión</Text>
+            </View>
+          </View>
+          <Text style={styles.sesionActivaArrow}>›</Text>
+        </TouchableOpacity>
+      )}
+
       {/* Stats */}
       <View style={styles.statsRow}>
         <StatCard value={user.clases_dadas || 0} label="Clases dadas" color={COLORS.primary} icon="📚" />
@@ -139,7 +181,6 @@ export function ProfesorHistorialScreen({ navigation }) {
         <Text style={styles.headerTitle}>Mi historial</Text>
         <View style={{ width: 36 }} />
       </View>
-      {/* Cortes */}
       <View style={styles.cortesRow}>
         {[1, 2, 3].map(c => (
           <TouchableOpacity key={c} style={[styles.corteBtn, corte === c && styles.corteBtnOn]} onPress={() => setCorte(c)}>
@@ -147,7 +188,6 @@ export function ProfesorHistorialScreen({ navigation }) {
           </TouchableOpacity>
         ))}
       </View>
-      {/* Mini stats */}
       <View style={styles.miniStats}>
         <View style={[styles.miniStat, { backgroundColor: COLORS.success }]}><Text style={styles.miniStatNum}>{presentes}</Text><Text style={styles.miniStatLabel}>Presentes</Text></View>
         <View style={[styles.miniStat, { backgroundColor: COLORS.warning }]}><Text style={styles.miniStatNum}>{tardios}</Text><Text style={styles.miniStatLabel}>Tardíos</Text></View>
@@ -242,6 +282,21 @@ const styles = StyleSheet.create({
   fecha: { ...FONTS.tiny, color: 'rgba(255,255,255,0.6)', marginTop: 4, textTransform: 'capitalize' },
   logoutBtn: { backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: RADIUS.sm, paddingVertical: 8, paddingHorizontal: 12 },
   logoutText: { ...FONTS.small, color: COLORS.white },
+  sesionActivaBanner: {
+    backgroundColor: '#1A6B3A', marginHorizontal: 16, marginTop: 12,
+    borderRadius: RADIUS.lg, padding: 16, flexDirection: 'row',
+    alignItems: 'center', justifyContent: 'space-between', ...SHADOWS.medium,
+  },
+  sesionActivaLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  sesionActivaDot: {
+    width: 12, height: 12, borderRadius: 6,
+    backgroundColor: '#4ADE80',
+    shadowColor: '#4ADE80', shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8, shadowRadius: 4,
+  },
+  sesionActivaTitle: { ...FONTS.body, color: COLORS.white, fontWeight: '700' },
+  sesionActivaSub: { ...FONTS.tiny, color: 'rgba(255,255,255,0.75)', marginTop: 2 },
+  sesionActivaArrow: { fontSize: 24, color: 'rgba(255,255,255,0.7)' },
   statsRow: { flexDirection: 'row', gap: 10, padding: 16 },
   section: { paddingHorizontal: 16, marginBottom: 8 },
   sectionTitle: { ...FONTS.h4, color: COLORS.dark, marginBottom: 12 },
